@@ -46,7 +46,6 @@ NNODE=1 NGPU=8 LOG_RANK=0 bash train.sh \
   --training.dataset HuggingFaceFW/fineweb-edu \
   --training.dataset_name default \
   --training.dataset_split train \
-  --training.streaming \
   --training.num_workers 32 \
   --training.prefetch_factor 2 \
   --training.seed 42 \
