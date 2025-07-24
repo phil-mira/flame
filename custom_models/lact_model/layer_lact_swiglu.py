@@ -545,7 +545,6 @@ class LowRankFastWeight(nn.Module):
 
 
 class LaCTSWIGLULayer(nn.Module):
-
     def __init__(
         self,
         hidden_size: int,
@@ -605,6 +604,7 @@ class LaCTSWIGLULayer(nn.Module):
         
         d_in, d_out = self.fw_head_dim, self.fw_head_dim
         d_h = int(d_in * inter_multi)
+
 
         self.d_h = d_h
         self.d_in = d_in
@@ -697,7 +697,10 @@ class LaCTSWIGLULayer(nn.Module):
 
         batch_size, q_len, _ = hidden_states.size()
 
+
         q, k, v = self.qkv(hidden_states).chunk(3, dim=-1)
+        
+
         #### compute window attention first, then do ttt. ####
 
         if self.attn_qk_norm:

@@ -416,7 +416,7 @@ def main(job_config: JobConfig):
                     time.perf_counter() - data_load_start
                 )
 
-                input_ids = input_ids.to(device_type).to(torch.bfloat16)
+                input_ids = input_ids.to(device_type)
 
                 """
                 TODO[flame]: We need to carefully handle the position_ids for TP/CP
@@ -430,9 +430,9 @@ def main(job_config: JobConfig):
                     Each rank has the coresponding chunked position_ids. [FOR All model]
 
                 """
-                labels = labels.to(device_type).to(torch.bfloat16)
+                labels = labels.to(device_type)
                 cu_seqlens = (
-                    batch["cu_seqlens"].to(device_type).to(torch.bfloat16)
+                    batch["cu_seqlens"].to(device_type)
                     if "cu_seqlens" in batch
                     else None
                 )

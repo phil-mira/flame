@@ -472,6 +472,11 @@ if TYPE_CHECKING:
         
 
 class LaCTBlock(nn.Module):
+    def to_bfloat16(self):
+        """Recursively convert all parameters and buffers to bfloat16."""
+        for module in self.modules():
+            module.to(torch.bfloat16)
+        return self
 
     def __init__(self, config: LaCTSWIGLUConfig, layer_idx: int):
         super().__init__()
@@ -514,6 +519,9 @@ class LaCTBlock(nn.Module):
             fuse_swiglu=config.fuse_swiglu
         )
 
+        # Convert all weights and buffers to bfloat16
+        self.to_bfloat16()
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -522,8 +530,10 @@ class LaCTBlock(nn.Module):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         **kwargs: Unpack[Any]
-    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+    ) -> Tuple[torch.BFloat16Tensor, Optional[Tuple[torch.BFloat16Tensor, torch.BFloat16Tensor]]]:
 
+        # Ensure hidden_states and residual are bfloat16 for matmul compatibility
+        hidden_states = hidden_states.to(torch.bfloat16)
         residual = hidden_states
         hidden_states = self.attn_norm(hidden_states)
         hidden_states, attentions, past_key_values = self.attn(
@@ -542,6 +552,7 @@ class LaCTBlock(nn.Module):
             hidden_states = self.mlp_norm(hidden_states)
         hidden_states = self.mlp(hidden_states, **kwargs)
         hidden_states = residual + hidden_states
+        hidden_states = hidden_states.to(torch.bfloat16)
 
         outputs = (hidden_states,)
 
@@ -623,6 +634,11 @@ class LaCTPreTrainedModel(PreTrainedModel):
 
 
 class LaCTModel(LaCTPreTrainedModel):
+    def to_bfloat16(self):
+        """Recursively convert all parameters and buffers to bfloat16."""
+        for module in self.modules():
+            module.to(torch.bfloat16)
+        return self
 
     def __init__(
         self,
@@ -640,6 +656,9 @@ class LaCTModel(LaCTPreTrainedModel):
         self.gradient_checkpointing = False
 
         self.post_init()
+
+        # Convert all weights and buffers to bfloat16
+        self.to_bfloat16()
 
     def get_input_embeddings(self):
         return self.embeddings
@@ -682,7 +701,7 @@ class LaCTModel(LaCTPreTrainedModel):
             inputs_embeds = self.embeddings(input_ids)
 
         # embed positions
-        hidden_states = inputs_embeds
+        hidden_states = inputs_embeds.to(torch.bfloat16)
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -720,6 +739,7 @@ class LaCTModel(LaCTPreTrainedModel):
                 )
 
             hidden_states = layer_outputs[0]
+            hidden_states = hidden_states.to(torch.bfloat16)
 
             if use_cache:
                 next_cache = layer_outputs[2 if output_attentions else 1]
@@ -728,6 +748,7 @@ class LaCTModel(LaCTPreTrainedModel):
                 all_attns += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
+        hidden_states = hidden_states.to(torch.bfloat16)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -864,9 +885,9 @@ class LaCTForCausalLM(LaCTPreTrainedModel, GenerationMixin):
             labels = labels.to(hidden_states.device)
             labels = torch.cat((labels[..., 1:], torch.full_like(labels[:, :1], criterion.ignore_index)), 1)
             if fuse_linear_and_cross_entropy:
-                loss = criterion(hidden_states, labels, self.lm_head.weight, self.lm_head.bias)
+                loss = criterion(hidden_states.float(), labels, self.lm_head.weight.float(), self.lm_head.bias.float() if self.lm_head.bias is not None else None)
             else:
-                loss = criterion(logits.view(labels.numel(), -1), labels.view(-1))
+                loss = criterion(logits.float().view(labels.numel(), -1), labels.view(-1))
 
         if not return_dict:
             output = (logits,) + outputs[1:]
